@@ -1,0 +1,43 @@
+# Minimal config for bbr-injector.
+#
+# This process connects ONLY to the configured peers, and injects compact-proof
+# announcements at a fixed rate (events/min), while serving compact proof bytes
+# (`respond_compact_vdf`) when those peers request them.
+
+network_id = "mainnet"
+
+[tls]
+# Paths to a node cert/key signed by Chia CA.
+# Defaults assume a local Chia full node install (mainnet).
+cert_path = "~/.chia/mainnet/config/ssl/full_node/public_full_node.crt"
+key_path  = "~/.chia/mainnet/config/ssl/full_node/public_full_node.key"
+
+[archive]
+# Local proof archive SQLite DB produced by `bbr_scrap`.
+db_path = "../bbr_scrap/data/compact_proofs.sqlite"
+busy_timeout_ms = 500
+
+[injector]
+# Default speed used on first launch before `data/in_flight.json` exists.
+default_proofs_per_window = 3
+default_window_ms = 2000
+
+# How often to poll the local archive event log when our local buffer is low.
+poll_interval_ms = 500
+# Batch size for reading from the local archive DB.
+events_read_limit = 5000
+
+[peers]
+# Fixed list of FULL_NODE peers to inject into.
+targets = [
+  "node.chia.net:8444",
+]
+
+[storage]
+# In-flight state persisted by the injector (cursor, end, speed, paused).
+in_flight_path = "data/in_flight.json"
+
+[http]
+# Local web UI + API.
+listen_addr = "127.0.0.1:6182"
+static_dir = "ui/dist"

@@ -1,0 +1,7 @@
+/target
+/data
+/data/in_flight.json
+/config.toml
+/ui/node_modules
+/ui/dist
+*.log
