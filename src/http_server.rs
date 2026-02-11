@@ -13,6 +13,7 @@ use tokio::sync::watch;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
+use crate::in_flight::SendMode;
 use crate::injector::{ControlCommand, InjectorSnapshot};
 use crate::proofs::{ProofServingMetrics, ProofServingSnapshot};
 use crate::shutdown::Shutdown;
@@ -55,7 +56,8 @@ pub async fn run_http_server(
         .route("/status", get(get_status))
         .route("/control/pause", post(post_pause))
         .route("/control/speed", post(post_speed))
-        .route("/control/cursor", post(post_cursor));
+        .route("/control/cursor", post(post_cursor))
+        .route("/control/mode", post(post_mode));
     let assets_svc = ServeDir::new(state.static_dir.join("assets"));
 
     let app = Router::new()
@@ -145,6 +147,25 @@ async fn post_cursor(State(state): State<AppState>, Json(req): Json<CursorReques
         .send(ControlCommand::SetCursorAndEnd {
             cursor_event_id: req.cursor_event_id,
             end_event_id: req.end_event_id,
+        })
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ModeRequest {
+    send_mode: SendMode,
+}
+
+async fn post_mode(State(state): State<AppState>, Json(req): Json<ModeRequest>) -> impl IntoResponse {
+    if state
+        .injector_control_tx
+        .send(ControlCommand::SetSendMode {
+            send_mode: req.send_mode,
         })
         .await
         .is_err()

@@ -1,4 +1,4 @@
-import type { StatusResponse } from './types';
+import type { SendMode, StatusResponse } from './types';
 
 export async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetch('/api/status');
@@ -30,4 +30,8 @@ export async function setSpeed(proofsPerWindow: number, windowMs: number): Promi
 
 export async function setCursor(cursorEventId: number, endEventId: number | null): Promise<void> {
   await postJson('/api/control/cursor', { cursor_event_id: cursorEventId, end_event_id: endEventId });
+}
+
+export async function setMode(sendMode: SendMode): Promise<void> {
+  await postJson('/api/control/mode', { send_mode: sendMode });
 }

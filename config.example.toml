@@ -34,7 +34,7 @@ targets = [
 ]
 
 [storage]
-# In-flight state persisted by the injector (cursor, end, speed, paused).
+# In-flight state persisted by the injector (cursor, end, speed, paused, send_mode).
 in_flight_path = "data/in_flight.json"
 
 [http]

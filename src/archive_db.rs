@@ -47,7 +47,7 @@ impl ArchiveDb {
 
             let mut stmt = conn
                 .prepare(
-                    "SELECT event_id, ts, height, header_hash, field_vdf, vdf_challenge, vdf_iters, vdf_output\n\
+                    "SELECT event_id, ts, height, header_hash, field_vdf, vdf_challenge, vdf_iters, vdf_output, respond_compact_vdf\n\
                      FROM compact_proofs\n\
                      WHERE event_id > ?1\n\
                      ORDER BY event_id ASC\n\
@@ -68,6 +68,7 @@ impl ArchiveDb {
                 let vdf_challenge: Vec<u8> = row.get(5)?;
                 let vdf_iters: i64 = row.get(6)?;
                 let vdf_output: Vec<u8> = row.get(7)?;
+                let respond_compact_vdf: Vec<u8> = row.get(8)?;
 
                 events.push(CompactionEvent {
                     event_id: event_id.max(0) as u64,
@@ -80,6 +81,7 @@ impl ArchiveDb {
                         number_of_iterations: vdf_iters.max(0) as u64,
                         output: vdf_output,
                     }),
+                    respond_compact_vdf,
                 });
             }
 
@@ -173,6 +175,7 @@ pub struct CompactionEvent {
     pub header_hash: Vec<u8>,
     pub field_vdf: i32,
     pub vdf_info: Option<VdfInfo>,
+    pub respond_compact_vdf: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -181,4 +184,3 @@ pub struct ReadCompactionEventsResponse {
     pub last_event_id: u64,
     pub events: Vec<CompactionEvent>,
 }
-

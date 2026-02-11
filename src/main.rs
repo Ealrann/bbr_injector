@@ -23,7 +23,7 @@ use tracing_subscriber::EnvFilter;
 use crate::archive_db::ArchiveDb;
 use crate::config::Config;
 use crate::http_server::{HttpServerConfig, run_http_server};
-use crate::in_flight::{InFlightState, InFlightStore};
+use crate::in_flight::{InFlightState, InFlightStore, SendMode};
 use crate::injector::Injector;
 use crate::proofs::{ArchiveProofProvider, ProofServingMetrics};
 use crate::shutdown::Shutdown;
@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         proofs_per_window: config.injector.default_proofs_per_window.max(1),
         window_ms: config.injector.default_window_ms.max(1),
         paused: true,
+        send_mode: SendMode::Announcement,
     };
     let in_flight =
         InFlightStore::load_or_init(config.storage.in_flight_path.clone(), in_flight_defaults).await?;

@@ -12,6 +12,8 @@ export type PeerStatus = {
   reported_peer_count: number;
 };
 
+export type SendMode = 'announcement' | 'respond_only';
+
 export type InjectorSnapshot = {
   started_ts: number;
   updated_ts: number;
@@ -24,6 +26,7 @@ export type InjectorSnapshot = {
   connected_peers: number;
   paused: boolean;
   end_event_id: number | null;
+  send_mode: SendMode;
 
   cursor_event_id: number;
   first_event_id: number;

@@ -9,9 +9,11 @@ use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 
 use crate::archive_db::{ArchiveDb, CompactionEvent};
-use crate::chia_messages::{build_new_compact_vdf_message, resolve_socket_addrs};
+use crate::chia_messages::{
+    build_new_compact_vdf_message, build_respond_compact_vdf_message, resolve_socket_addrs,
+};
 use crate::config::Config;
-use crate::in_flight::InFlightStore;
+use crate::in_flight::{InFlightStore, SendMode};
 use crate::peer::{OutboundMessage, PeerEvent, PeerSession};
 use crate::proofs::{ProofProvider, ProofServingMetrics};
 use crate::shutdown::Shutdown;
@@ -26,6 +28,9 @@ pub enum ControlCommand {
     SetCursorAndEnd {
         cursor_event_id: u64,
         end_event_id: Option<u64>,
+    },
+    SetSendMode {
+        send_mode: SendMode,
     },
 }
 
@@ -57,6 +62,7 @@ pub struct InjectorSnapshot {
     pub connected_peers: usize,
     pub paused: bool,
     pub end_event_id: Option<u64>,
+    pub send_mode: SendMode,
 
     pub cursor_event_id: u64,
     pub first_event_id: u64,
@@ -81,6 +87,7 @@ pub struct Injector {
 
     paused: bool,
     end_event_id: Option<u64>,
+    send_mode: SendMode,
 
     proofs_per_window: u32,
     window: Duration,
@@ -141,6 +148,7 @@ impl Injector {
             connected_peers: 0,
             paused: in_flight_snapshot.paused,
             end_event_id,
+            send_mode: in_flight_snapshot.send_mode,
             cursor_event_id,
             first_event_id: 0,
             last_event_id: 0,
@@ -187,6 +195,7 @@ impl Injector {
                 in_flight,
                 paused: in_flight_snapshot.paused,
                 end_event_id,
+                send_mode: in_flight_snapshot.send_mode,
                 proofs_per_window,
                 window,
                 window_tokens_remaining,
@@ -340,6 +349,12 @@ impl Injector {
                     warn!("failed to persist paused state: {e:#}");
                 }
             }
+            ControlCommand::SetSendMode { send_mode } => {
+                self.send_mode = send_mode;
+                if let Err(e) = self.in_flight.set_send_mode(send_mode).await {
+                    warn!("failed to persist send mode: {e:#}");
+                }
+            }
         }
     }
 
@@ -464,24 +479,36 @@ impl Injector {
         let Some(ev) = self.event_buf.pop_front() else {
             return;
         };
-        let Some(vdf) = ev.vdf_info.clone() else {
-            // Skip malformed events.
-            self.cursor_event_id = ev.event_id;
-            let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
-            return;
-        };
-
-        let msg_bytes = match build_new_compact_vdf_message(&ev, &vdf) {
-            Ok(b) => Arc::new(b),
-            Err(e) => {
-                warn!(
-                    "build new_compact_vdf failed (event_id={}): {e:#}",
-                    ev.event_id
-                );
-                self.cursor_event_id = ev.event_id;
-                let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
-                return;
+        let msg_bytes = match self.send_mode {
+            SendMode::Announcement => {
+                let Some(vdf) = ev.vdf_info.clone() else {
+                    warn!("missing vdf_info for announcement mode (event_id={})", ev.event_id);
+                    self.cursor_event_id = ev.event_id;
+                    let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+                    return;
+                };
+                match build_new_compact_vdf_message(&ev, &vdf) {
+                    Ok(b) => Arc::new(b),
+                    Err(e) => {
+                        warn!("build new_compact_vdf failed (event_id={}): {e:#}", ev.event_id);
+                        self.cursor_event_id = ev.event_id;
+                        let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+                        return;
+                    }
+                }
             }
+            SendMode::RespondOnly => match build_respond_compact_vdf_message(&ev.respond_compact_vdf) {
+                Ok(b) => Arc::new(b),
+                Err(e) => {
+                    warn!(
+                        "build respond_compact_vdf failed (event_id={}): {e:#}",
+                        ev.event_id
+                    );
+                    self.cursor_event_id = ev.event_id;
+                    let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+                    return;
+                }
+            },
         };
 
         let mut enqueued = 0usize;
@@ -583,6 +610,7 @@ impl Injector {
             connected_peers: self.connected_peers.len(),
             paused: self.paused,
             end_event_id: self.end_event_id,
+            send_mode: self.send_mode,
             cursor_event_id: self.cursor_event_id,
             first_event_id: self.first_event_id,
             last_event_id: self.last_event_id,

@@ -59,3 +59,12 @@ pub fn build_new_compact_vdf_message(ev: &CompactionEvent, vdf: &VdfInfo) -> any
     };
     outer.to_bytes().context("serialize outer Message")
 }
+
+pub fn build_respond_compact_vdf_message(respond_compact_vdf: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let outer = chia_protocol::Message {
+        msg_type: ProtocolMessageTypes::RespondCompactVDF,
+        id: None,
+        data: respond_compact_vdf.to_vec().into(),
+    };
+    outer.to_bytes().context("serialize outer Message")
+}

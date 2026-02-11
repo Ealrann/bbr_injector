@@ -5,6 +5,19 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendMode {
+    Announcement,
+    RespondOnly,
+}
+
+impl Default for SendMode {
+    fn default() -> Self {
+        Self::Announcement
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InFlightState {
     #[serde(default)]
@@ -17,6 +30,8 @@ pub struct InFlightState {
     pub window_ms: u64,
     #[serde(default)]
     pub paused: bool,
+    #[serde(default)]
+    pub send_mode: SendMode,
 }
 
 impl InFlightState {
@@ -99,6 +114,12 @@ impl InFlightStore {
         self.persist_locked(&state).await
     }
 
+    pub async fn set_send_mode(&self, send_mode: SendMode) -> anyhow::Result<()> {
+        let mut state = self.inner.state.lock().await;
+        state.send_mode = send_mode;
+        self.persist_locked(&state).await
+    }
+
     async fn persist(&self) -> anyhow::Result<()> {
         let state = self.inner.state.lock().await;
         self.persist_locked(&state).await
@@ -127,4 +148,3 @@ async fn write_atomic_json(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 
     Ok(())
 }
-

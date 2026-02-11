@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { StatusResponse } from './types';
-  import { fetchStatus, setCursor, setPaused, setSpeed } from './api';
+  import type { SendMode, StatusResponse } from './types';
+  import { fetchStatus, setCursor, setMode, setPaused, setSpeed } from './api';
 
   let loading = $state(false);
   let controlBusy = $state(false);
@@ -12,6 +12,7 @@
   let endEventId = $state<number | ''>('');
   let speedProofs = $state<number>(1);
   let speedWindowSec = $state<number>(1);
+  let sendMode = $state<SendMode>('announcement');
   let rollingAvgMs60 = $state<number | null>(null);
   let rollingSamples60 = $state<number>(0);
   let rollingMissRatio60 = $state<number | null>(null);
@@ -36,6 +37,7 @@
         endEventId = status.injector.end_event_id ?? '';
         speedProofs = status.injector.proofs_per_window || 1;
         speedWindowSec = Math.max(0.1, (status.injector.window_ms || 1000) / 1000);
+        sendMode = status.injector.send_mode || 'announcement';
         updateRollingStats(status);
       }
     } catch (e) {
@@ -150,6 +152,19 @@
       controlBusy = false;
     }
   }
+
+  async function applyMode() {
+    controlBusy = true;
+    error = null;
+    try {
+      await setMode(sendMode);
+      await refresh();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      controlBusy = false;
+    }
+  }
 </script>
 
 <div class="min-h-screen bg-zinc-950 text-zinc-100">
@@ -245,6 +260,28 @@
 
         <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
+            <div class="text-xs text-zinc-400">Gossip mode</div>
+            <select
+              class="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+              bind:value={sendMode}
+            >
+              <option value="announcement">Original mode (announcement)</option>
+              <option value="respond_only">Injection mode (RespondCompactVDF only)</option>
+            </select>
+          </div>
+          <div class="md:col-span-2 flex items-end">
+            <button
+              class="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 disabled:opacity-50"
+              onclick={applyMode}
+              disabled={controlBusy || loading}
+            >
+              Apply mode
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
             <div class="text-xs text-zinc-400">Proofs per window</div>
             <input
               class="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
@@ -276,7 +313,8 @@
         </div>
 
         <div class="text-xs text-zinc-500">
-          Current: {status ? `${status.injector.proofs_per_window} proof(s) / ${(status.injector.window_ms / 1000).toFixed(2)}s` : '—'}
+          Current mode: {status ? status.injector.send_mode : '—'}
+          · speed {status ? `${status.injector.proofs_per_window} proof(s) / ${(status.injector.window_ms / 1000).toFixed(2)}s` : '—'}
           · approx {status ? `${status.injector.events_per_minute}` : '—'} / min
         </div>
       </div>
