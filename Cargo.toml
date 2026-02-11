@@ -12,25 +12,25 @@ test-mode = ["dep:reqwest"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5.32", features = ["derive"] }
+clap = { version = "4.5.58", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 hex = "0.4"
-toml = "0.8"
+toml = "1.0"
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "signal", "time", "fs", "net"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-trait = "0.1"
 futures-util = "0.3"
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
-rand = "0.8"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"], optional = true }
+rand = "0.10"
 rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
 
-chia-protocol = { version = "=0.36.1" }
-chia-traits = { version = "=0.36.1" }
+chia-protocol = { version = "=0.37.0" }
+chia-traits = { version = "=0.37.0" }
 chia-wallet-sdk = { version = "=0.33.0", features = ["rustls"] }
 
-axum = { version = "=0.8.7", features = ["json"] }
+axum = { version = "=0.8.8", features = ["json"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
