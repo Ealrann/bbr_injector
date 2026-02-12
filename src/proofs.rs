@@ -58,8 +58,8 @@ impl ProofCache {
     }
 
     fn insert(&mut self, key: CompactionKey, value: Arc<Vec<u8>>) {
-        if self.map.contains_key(&key) {
-            self.map.insert(key, value);
+        if let Some(existing) = self.map.get_mut(&key) {
+            *existing = value;
             return;
         }
 

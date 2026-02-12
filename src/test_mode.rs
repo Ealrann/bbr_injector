@@ -157,7 +157,9 @@ pub async fn run_test(config: Config, args: TestArgs) -> anyhow::Result<()> {
         }
 
         if tokio::time::Instant::now() >= deadline {
-            warn!("timeout waiting for replace_ok evidence (toy A expected >= {expected_a_replace_ok_min}, toy B expected >= {expected_b_replace_ok_min:?})");
+            warn!(
+                "timeout waiting for replace_ok evidence (toy A expected >= {expected_a_replace_ok_min}, toy B expected >= {expected_b_replace_ok_min:?})"
+            );
             break;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -198,21 +200,19 @@ pub async fn run_test(config: Config, args: TestArgs) -> anyhow::Result<()> {
             );
             return Err(anyhow::anyhow!("test failed (see logs for metrics deltas)"));
         }
+    } else if delta_a.respond_compact_vdf_replace_ok > 0 {
+        info!(
+            "TEST PASS: injected={} applied_on_A={}",
+            events.len(),
+            delta_a.respond_compact_vdf_replace_ok
+        );
     } else {
-        if delta_a.respond_compact_vdf_replace_ok > 0 {
-            info!(
-                "TEST PASS: injected={} applied_on_A={}",
-                events.len(),
-                delta_a.respond_compact_vdf_replace_ok
-            );
-        } else {
-            warn!(
-                "TEST FAIL: injected={} applied_on_A={}",
-                events.len(),
-                delta_a.respond_compact_vdf_replace_ok
-            );
-            return Err(anyhow::anyhow!("test failed (no proofs applied on toy A)"));
-        }
+        warn!(
+            "TEST FAIL: injected={} applied_on_A={}",
+            events.len(),
+            delta_a.respond_compact_vdf_replace_ok
+        );
+        return Err(anyhow::anyhow!("test failed (no proofs applied on toy A)"));
     }
 
     peer_task.abort();
@@ -410,24 +410,34 @@ async fn find_events_to_inject(
 fn delta_metrics(before: &P2pMetrics, after: &P2pMetrics) -> P2pMetrics {
     P2pMetrics {
         new_compact_vdf_rx: after.new_compact_vdf_rx - before.new_compact_vdf_rx,
-        new_compact_vdf_too_recent: after.new_compact_vdf_too_recent - before.new_compact_vdf_too_recent,
-        new_compact_vdf_already_compact_or_unknown: after.new_compact_vdf_already_compact_or_unknown
+        new_compact_vdf_too_recent: after.new_compact_vdf_too_recent
+            - before.new_compact_vdf_too_recent,
+        new_compact_vdf_already_compact_or_unknown: after
+            .new_compact_vdf_already_compact_or_unknown
             - before.new_compact_vdf_already_compact_or_unknown,
         new_compact_vdf_missing_header_block: after.new_compact_vdf_missing_header_block
             - before.new_compact_vdf_missing_header_block,
-        new_compact_vdf_needs_proof: after.new_compact_vdf_needs_proof - before.new_compact_vdf_needs_proof,
-        new_compact_vdf_requested_proof: after.new_compact_vdf_requested_proof - before.new_compact_vdf_requested_proof,
+        new_compact_vdf_needs_proof: after.new_compact_vdf_needs_proof
+            - before.new_compact_vdf_needs_proof,
+        new_compact_vdf_requested_proof: after.new_compact_vdf_requested_proof
+            - before.new_compact_vdf_requested_proof,
         new_compact_vdf_got_proof_response: after.new_compact_vdf_got_proof_response
             - before.new_compact_vdf_got_proof_response,
         request_compact_vdf_rx: after.request_compact_vdf_rx - before.request_compact_vdf_rx,
-        request_compact_vdf_responded: after.request_compact_vdf_responded - before.request_compact_vdf_responded,
-        request_compact_vdf_missing_or_not_compact: after.request_compact_vdf_missing_or_not_compact
+        request_compact_vdf_responded: after.request_compact_vdf_responded
+            - before.request_compact_vdf_responded,
+        request_compact_vdf_missing_or_not_compact: after
+            .request_compact_vdf_missing_or_not_compact
             - before.request_compact_vdf_missing_or_not_compact,
         respond_compact_vdf_rx: after.respond_compact_vdf_rx - before.respond_compact_vdf_rx,
-        respond_compact_vdf_rejected: after.respond_compact_vdf_rejected - before.respond_compact_vdf_rejected,
-        respond_compact_vdf_already_seen: after.respond_compact_vdf_already_seen - before.respond_compact_vdf_already_seen,
-        respond_compact_vdf_replace_failed: after.respond_compact_vdf_replace_failed - before.respond_compact_vdf_replace_failed,
-        respond_compact_vdf_replace_ok: after.respond_compact_vdf_replace_ok - before.respond_compact_vdf_replace_ok,
+        respond_compact_vdf_rejected: after.respond_compact_vdf_rejected
+            - before.respond_compact_vdf_rejected,
+        respond_compact_vdf_already_seen: after.respond_compact_vdf_already_seen
+            - before.respond_compact_vdf_already_seen,
+        respond_compact_vdf_replace_failed: after.respond_compact_vdf_replace_failed
+            - before.respond_compact_vdf_replace_failed,
+        respond_compact_vdf_replace_ok: after.respond_compact_vdf_replace_ok
+            - before.respond_compact_vdf_replace_ok,
     }
 }
 

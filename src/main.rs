@@ -90,7 +90,8 @@ async fn main() -> anyhow::Result<()> {
         send_mode: SendMode::Announcement,
     };
     let in_flight =
-        InFlightStore::load_or_init(config.storage.in_flight_path.clone(), in_flight_defaults).await?;
+        InFlightStore::load_or_init(config.storage.in_flight_path.clone(), in_flight_defaults)
+            .await?;
     in_flight.set_paused(true).await?;
 
     #[cfg(feature = "test-mode")]

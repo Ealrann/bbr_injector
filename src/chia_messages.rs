@@ -16,7 +16,10 @@ pub async fn resolve_socket_addrs(s: &str) -> anyhow::Result<Vec<SocketAddr>> {
         .collect())
 }
 
-pub fn build_new_compact_vdf_message(ev: &CompactionEvent, vdf: &VdfInfo) -> anyhow::Result<Vec<u8>> {
+pub fn build_new_compact_vdf_message(
+    ev: &CompactionEvent,
+    vdf: &VdfInfo,
+) -> anyhow::Result<Vec<u8>> {
     let header_hash: [u8; 32] = ev
         .header_hash
         .as_slice()

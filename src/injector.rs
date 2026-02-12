@@ -20,7 +20,9 @@ use crate::shutdown::Shutdown;
 
 #[derive(Debug, Clone)]
 pub enum ControlCommand {
-    SetPaused { paused: bool },
+    SetPaused {
+        paused: bool,
+    },
     SetSpeed {
         proofs_per_window: u32,
         window_ms: u64,
@@ -65,6 +67,7 @@ pub struct InjectorSnapshot {
     pub send_mode: SendMode,
 
     pub cursor_event_id: u64,
+    pub sent_events_total: u64,
     pub first_event_id: u64,
     pub last_event_id: u64,
     pub peer_statuses: Vec<PeerStatusSnapshot>,
@@ -95,6 +98,7 @@ pub struct Injector {
     window_started_at: tokio::time::Instant,
 
     cursor_event_id: u64,
+    sent_events_total: u64,
 
     event_buf: VecDeque<CompactionEvent>,
     first_event_id: u64,
@@ -150,6 +154,7 @@ impl Injector {
             end_event_id,
             send_mode: in_flight_snapshot.send_mode,
             cursor_event_id,
+            sent_events_total: 0,
             first_event_id: 0,
             last_event_id: 0,
             peer_statuses: Vec::new(),
@@ -201,6 +206,7 @@ impl Injector {
                 window_tokens_remaining,
                 window_started_at,
                 cursor_event_id,
+                sent_events_total: 0,
                 event_buf: VecDeque::new(),
                 first_event_id: 0,
                 last_event_id: 0,
@@ -262,7 +268,10 @@ impl Injector {
         }
 
         // Best-effort flush cursor.
-        let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+        let _ = self
+            .in_flight
+            .set_cursor_event_id(self.cursor_event_id)
+            .await;
         Ok(())
     }
 
@@ -284,21 +293,26 @@ impl Injector {
                 };
                 if inflight.event_id == event_id {
                     self.cursor_event_id = event_id;
-                    if let Err(e) = self.in_flight.set_cursor_event_id(self.cursor_event_id).await {
+                    self.sent_events_total = self.sent_events_total.saturating_add(1);
+                    if let Err(e) = self
+                        .in_flight
+                        .set_cursor_event_id(self.cursor_event_id)
+                        .await
+                    {
                         warn!("failed to persist cursor: {e:#}");
                     }
                     self.inflight = None;
 
-                    if let Some(end) = self.end_event_id {
-                        if self.cursor_event_id >= end {
-                            info!(
-                                "end event_id reached; pausing (cursor={} end={})",
-                                self.cursor_event_id, end
-                            );
-                            self.paused = true;
-                            if let Err(e) = self.in_flight.set_paused(true).await {
-                                warn!("failed to persist paused state: {e:#}");
-                            }
+                    if let Some(end) = self.end_event_id
+                        && self.cursor_event_id >= end
+                    {
+                        info!(
+                            "end event_id reached; pausing (cursor={} end={})",
+                            self.cursor_event_id, end
+                        );
+                        self.paused = true;
+                        if let Err(e) = self.in_flight.set_paused(true).await {
+                            warn!("failed to persist paused state: {e:#}");
                         }
                     }
                 }
@@ -336,6 +350,7 @@ impl Injector {
                 self.paused = true;
                 self.end_event_id = end_event_id;
                 self.cursor_event_id = cursor_event_id;
+                self.sent_events_total = 0;
                 self.event_buf.clear();
                 self.inflight = None;
                 if let Err(e) = self
@@ -362,10 +377,10 @@ impl Injector {
         if self.paused {
             return;
         }
-        if let Some(end) = self.end_event_id {
-            if self.cursor_event_id >= end {
-                return;
-            }
+        if let Some(end) = self.end_event_id
+            && self.cursor_event_id >= end
+        {
+            return;
         }
         if self.event_buf.len() > 10_000 {
             return;
@@ -402,7 +417,10 @@ impl Injector {
                 self.cursor_event_id, resp.last_event_id
             );
             self.cursor_event_id = resp.last_event_id;
-            let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+            let _ = self
+                .in_flight
+                .set_cursor_event_id(self.cursor_event_id)
+                .await;
             return;
         }
 
@@ -417,14 +435,17 @@ impl Injector {
                 self.cursor_event_id, resp.first_event_id
             );
             self.cursor_event_id = resp.first_event_id.saturating_sub(1);
-            let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+            let _ = self
+                .in_flight
+                .set_cursor_event_id(self.cursor_event_id)
+                .await;
         }
 
         for ev in resp.events {
-            if let Some(end) = self.end_event_id {
-                if ev.event_id > end {
-                    break;
-                }
+            if let Some(end) = self.end_event_id
+                && ev.event_id > end
+            {
+                break;
             }
             self.event_buf.push_back(ev);
         }
@@ -463,14 +484,14 @@ impl Injector {
             return;
         }
 
-        if let Some(end) = self.end_event_id {
-            if self.cursor_event_id >= end {
-                self.paused = true;
-                if let Err(e) = self.in_flight.set_paused(true).await {
-                    warn!("failed to persist paused state: {e:#}");
-                }
-                return;
+        if let Some(end) = self.end_event_id
+            && self.cursor_event_id >= end
+        {
+            self.paused = true;
+            if let Err(e) = self.in_flight.set_paused(true).await {
+                warn!("failed to persist paused state: {e:#}");
             }
+            return;
         }
 
         if self.event_buf.is_empty() {
@@ -482,46 +503,63 @@ impl Injector {
         let msg_bytes = match self.send_mode {
             SendMode::Announcement => {
                 let Some(vdf) = ev.vdf_info.clone() else {
-                    warn!("missing vdf_info for announcement mode (event_id={})", ev.event_id);
+                    warn!(
+                        "missing vdf_info for announcement mode (event_id={})",
+                        ev.event_id
+                    );
                     self.cursor_event_id = ev.event_id;
-                    let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+                    let _ = self
+                        .in_flight
+                        .set_cursor_event_id(self.cursor_event_id)
+                        .await;
                     return;
                 };
                 match build_new_compact_vdf_message(&ev, &vdf) {
                     Ok(b) => Arc::new(b),
                     Err(e) => {
-                        warn!("build new_compact_vdf failed (event_id={}): {e:#}", ev.event_id);
+                        warn!(
+                            "build new_compact_vdf failed (event_id={}): {e:#}",
+                            ev.event_id
+                        );
                         self.cursor_event_id = ev.event_id;
-                        let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
+                        let _ = self
+                            .in_flight
+                            .set_cursor_event_id(self.cursor_event_id)
+                            .await;
                         return;
                     }
                 }
             }
-            SendMode::RespondOnly => match build_respond_compact_vdf_message(&ev.respond_compact_vdf) {
-                Ok(b) => Arc::new(b),
-                Err(e) => {
-                    warn!(
-                        "build respond_compact_vdf failed (event_id={}): {e:#}",
-                        ev.event_id
-                    );
-                    self.cursor_event_id = ev.event_id;
-                    let _ = self.in_flight.set_cursor_event_id(self.cursor_event_id).await;
-                    return;
+            SendMode::RespondOnly => {
+                match build_respond_compact_vdf_message(&ev.respond_compact_vdf) {
+                    Ok(b) => Arc::new(b),
+                    Err(e) => {
+                        warn!(
+                            "build respond_compact_vdf failed (event_id={}): {e:#}",
+                            ev.event_id
+                        );
+                        self.cursor_event_id = ev.event_id;
+                        let _ = self
+                            .in_flight
+                            .set_cursor_event_id(self.cursor_event_id)
+                            .await;
+                        return;
+                    }
                 }
-            },
+            }
         };
 
         let mut enqueued = 0usize;
-        for addr in self.connected_peers.iter().copied() {
-            let Some(tx) = self.peers.get(&addr) else {
+        for addr in &self.connected_peers {
+            let Some(tx) = self.peers.get(addr) else {
                 continue;
             };
             // Channel is bounded, but we send at a very low rate (<= 1.5 msg/sec).
             // If a peer is too slow, dropping is acceptable for this "best-effort injector".
             if tx
                 .try_send(OutboundMessage {
-                bytes: msg_bytes.clone(),
-                event_id: Some(ev.event_id),
+                    bytes: msg_bytes.clone(),
+                    event_id: Some(ev.event_id),
                 })
                 .is_ok()
             {
@@ -562,8 +600,8 @@ impl Injector {
             inflight.event_id
         );
         inflight.created_at = tokio::time::Instant::now();
-        for addr in self.connected_peers.iter().copied() {
-            let Some(tx) = self.peers.get(&addr) else {
+        for addr in &self.connected_peers {
+            let Some(tx) = self.peers.get(addr) else {
                 continue;
             };
             let _ = tx.try_send(OutboundMessage {
@@ -590,11 +628,7 @@ impl Injector {
                 addr: addr.to_string(),
                 connected: self.connected_peers.contains(addr),
                 reported_peers_known: self.remote_peer_counts.contains_key(addr),
-                reported_peer_count: self
-                    .remote_peer_counts
-                    .get(addr)
-                    .copied()
-                    .unwrap_or(0),
+                reported_peer_count: self.remote_peer_counts.get(addr).copied().unwrap_or(0),
             })
             .collect();
         peer_statuses.sort_by(|a, b| a.addr.cmp(&b.addr));
@@ -612,6 +646,7 @@ impl Injector {
             end_event_id: self.end_event_id,
             send_mode: self.send_mode,
             cursor_event_id: self.cursor_event_id,
+            sent_events_total: self.sent_events_total,
             first_event_id: self.first_event_id,
             last_event_id: self.last_event_id,
             peer_statuses,

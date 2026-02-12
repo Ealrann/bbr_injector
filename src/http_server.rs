@@ -1,10 +1,11 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
-use axum::extract::State;
 use axum::Json;
 use axum::Router;
+use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -92,7 +93,10 @@ struct PauseRequest {
     paused: bool,
 }
 
-async fn post_pause(State(state): State<AppState>, Json(req): Json<PauseRequest>) -> impl IntoResponse {
+async fn post_pause(
+    State(state): State<AppState>,
+    Json(req): Json<PauseRequest>,
+) -> impl IntoResponse {
     if state
         .injector_control_tx
         .send(ControlCommand::SetPaused { paused: req.paused })
@@ -101,7 +105,35 @@ async fn post_pause(State(state): State<AppState>, Json(req): Json<PauseRequest>
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    if !wait_for_paused_state(state.injector_rx.clone(), req.paused).await {
+        return (
+            StatusCode::GATEWAY_TIMEOUT,
+            "timed out waiting for injector paused state",
+        )
+            .into_response();
+    }
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn wait_for_paused_state(mut rx: watch::Receiver<InjectorSnapshot>, paused: bool) -> bool {
+    if rx.borrow().paused == paused {
+        return true;
+    }
+
+    let wait_loop = async move {
+        loop {
+            if rx.changed().await.is_err() {
+                return false;
+            }
+            if rx.borrow().paused == paused {
+                return true;
+            }
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), wait_loop)
+        .await
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,7 +142,10 @@ struct SpeedRequest {
     window_ms: u64,
 }
 
-async fn post_speed(State(state): State<AppState>, Json(req): Json<SpeedRequest>) -> impl IntoResponse {
+async fn post_speed(
+    State(state): State<AppState>,
+    Json(req): Json<SpeedRequest>,
+) -> impl IntoResponse {
     if state
         .injector_control_tx
         .send(ControlCommand::SetSpeed {
@@ -131,15 +166,18 @@ struct CursorRequest {
     end_event_id: Option<u64>,
 }
 
-async fn post_cursor(State(state): State<AppState>, Json(req): Json<CursorRequest>) -> impl IntoResponse {
-    if let Some(end) = req.end_event_id {
-        if req.cursor_event_id > end {
-            return (
-                StatusCode::BAD_REQUEST,
-                "cursor_event_id must be <= end_event_id",
-            )
-                .into_response();
-        }
+async fn post_cursor(
+    State(state): State<AppState>,
+    Json(req): Json<CursorRequest>,
+) -> impl IntoResponse {
+    if let Some(end) = req.end_event_id
+        && req.cursor_event_id > end
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            "cursor_event_id must be <= end_event_id",
+        )
+            .into_response();
     }
 
     if state
@@ -161,7 +199,10 @@ struct ModeRequest {
     send_mode: SendMode,
 }
 
-async fn post_mode(State(state): State<AppState>, Json(req): Json<ModeRequest>) -> impl IntoResponse {
+async fn post_mode(
+    State(state): State<AppState>,
+    Json(req): Json<ModeRequest>,
+) -> impl IntoResponse {
     if state
         .injector_control_tx
         .send(ControlCommand::SetSendMode {

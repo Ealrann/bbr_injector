@@ -289,13 +289,7 @@ fn remember_pending_announcement(
 ) {
     let seq = *pending_seq;
     *pending_seq = pending_seq.wrapping_add(1);
-    pending_announcements.insert(
-        key.clone(),
-        PendingAnnouncement {
-            sent_at: now,
-            seq,
-        },
-    );
+    pending_announcements.insert(key.clone(), PendingAnnouncement { sent_at: now, seq });
     pending_order.push_back((key, seq));
 }
 

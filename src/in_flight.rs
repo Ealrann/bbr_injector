@@ -5,17 +5,12 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SendMode {
+    #[default]
     Announcement,
     RespondOnly,
-}
-
-impl Default for SendMode {
-    fn default() -> Self {
-        Self::Announcement
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +61,9 @@ impl InFlightStore {
             Ok(data) => serde_json::from_slice::<InFlightState>(&data)
                 .with_context(|| format!("parse in-flight json {}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => defaults.clone(),
-            Err(e) => return Err(e).with_context(|| format!("read in-flight json {}", path.display())),
+            Err(e) => {
+                return Err(e).with_context(|| format!("read in-flight json {}", path.display()));
+            }
         };
         let loaded = loaded.apply_defaults(&defaults);
 

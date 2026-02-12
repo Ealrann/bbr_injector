@@ -5,6 +5,7 @@
 
   let loading = $state(false);
   let controlBusy = $state(false);
+  let startActionPending = $state(false);
   let error: string | null = $state(null);
   let status: StatusResponse | null = $state(null);
 
@@ -18,6 +19,8 @@
   let rollingMissRatio60 = $state<number | null>(null);
 
   const ROLLING_WINDOW_MS = 60_000;
+  const START_SETTLE_MS = 5_000;
+  const START_SETTLE_STEP_MS = 500;
   const rollingHistory: Array<{
     atMs: number;
     totalMs: number;
@@ -26,24 +29,47 @@
     miss: number;
   }> = [];
 
+  function applyStatus(nextStatus: StatusResponse): void {
+    status = nextStatus;
+
+    // Keep the control form roughly in sync with current state.
+    cursorEventId = nextStatus.injector.cursor_event_id ?? '';
+    endEventId = nextStatus.injector.end_event_id ?? '';
+    speedProofs = nextStatus.injector.proofs_per_window || 1;
+    speedWindowSec = Math.max(0.1, (nextStatus.injector.window_ms || 1000) / 1000);
+    sendMode = nextStatus.injector.send_mode || 'announcement';
+    updateRollingStats(nextStatus);
+  }
+
   async function refresh() {
     loading = true;
     error = null;
     try {
-      status = await fetchStatus();
-      if (status) {
-        // Keep the control form roughly in sync with current state (manual-refresh UI).
-        cursorEventId = status.injector.cursor_event_id ?? '';
-        endEventId = status.injector.end_event_id ?? '';
-        speedProofs = status.injector.proofs_per_window || 1;
-        speedWindowSec = Math.max(0.1, (status.injector.window_ms || 1000) / 1000);
-        sendMode = status.injector.send_mode || 'announcement';
-        updateRollingStats(status);
-      }
+      applyStatus(await fetchStatus());
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshSilent() {
+    try {
+      applyStatus(await fetchStatus());
+    } catch {
+      // best-effort UX polling only
+    }
+  }
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function refreshBurst(totalMs: number, stepMs: number) {
+    const rounds = Math.max(1, Math.floor(totalMs / stepMs));
+    for (let i = 0; i < rounds; i++) {
+      await sleep(stepMs);
+      await refreshSilent();
     }
   }
 
@@ -108,14 +134,20 @@
   }
 
   async function setPausedUi(paused: boolean) {
+    const starting = !paused;
     controlBusy = true;
+    startActionPending = starting;
     error = null;
     try {
       await setPaused(paused);
       await refresh();
+      if (starting) {
+        void refreshBurst(START_SETTLE_MS, START_SETTLE_STEP_MS);
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
+      startActionPending = false;
       controlBusy = false;
     }
   }
@@ -221,7 +253,7 @@
               onclick={() => setPausedUi(!(status?.injector?.paused ?? true))}
               disabled={controlBusy || loading || !status}
             >
-              {status ? (status.injector.paused ? 'Start' : 'Pause') : '…'}
+              {startActionPending ? 'Starting…' : status ? (status.injector.paused ? 'Start' : 'Pause') : '…'}
             </button>
           </div>
         </div>
@@ -249,7 +281,7 @@
           </div>
           <div class="flex items-end">
             <button
-              class="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 disabled:opacity-50"
+              class="w-full rounded border border-emerald-700 bg-emerald-600 px-3 py-2 text-sm font-medium text-emerald-50 hover:bg-emerald-500 disabled:opacity-50"
               onclick={applyCursor}
               disabled={controlBusy || loading}
             >
@@ -259,7 +291,7 @@
         </div>
 
         <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div>
+          <div class="md:col-span-2">
             <div class="text-xs text-zinc-400">Gossip mode</div>
             <select
               class="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
@@ -269,9 +301,9 @@
               <option value="respond_only">Injection mode (RespondCompactVDF only)</option>
             </select>
           </div>
-          <div class="md:col-span-2 flex items-end">
+          <div class="flex items-end">
             <button
-              class="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 disabled:opacity-50"
+              class="w-full rounded border border-emerald-700 bg-emerald-600 px-3 py-2 text-sm font-medium text-emerald-50 hover:bg-emerald-500 disabled:opacity-50"
               onclick={applyMode}
               disabled={controlBusy || loading}
             >
@@ -303,7 +335,7 @@
           </div>
           <div class="flex items-end">
             <button
-              class="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 disabled:opacity-50"
+              class="w-full rounded border border-emerald-700 bg-emerald-600 px-3 py-2 text-sm font-medium text-emerald-50 hover:bg-emerald-500 disabled:opacity-50"
               onclick={applySpeed}
               disabled={controlBusy || loading}
             >
@@ -326,8 +358,8 @@
       </div>
       <div class="grid grid-cols-2 gap-4 p-4 md:grid-cols-3">
         <div>
-          <div class="text-xs text-zinc-400">Cursor</div>
-          <div class="text-2xl font-semibold">{status ? `${status.injector.cursor_event_id}` : '—'}</div>
+          <div class="text-xs text-zinc-400">{status?.injector?.send_mode === 'respond_only' ? 'Respond sent' : 'Announced'}</div>
+          <div class="text-2xl font-semibold">{status ? `${status.injector.sent_events_total}` : '—'}</div>
           <div class="text-xs text-zinc-500">
             remaining {status ? remainingEvents() : '—'} · first {status ? status.injector.first_event_id : '—'} / last
             {status ? status.injector.last_event_id : '—'}
@@ -378,6 +410,7 @@
     <section class="rounded border border-zinc-800 bg-zinc-900/30">
       <div class="border-b border-zinc-800 px-4 py-3">
         <div class="text-sm font-semibold">Proof serving</div>
+        <div class="mt-1 text-xs text-zinc-500">Only populated in gossip mode: <code>announcement</code>.</div>
       </div>
       <div class="grid grid-cols-2 gap-4 p-4 md:grid-cols-3">
         <div>

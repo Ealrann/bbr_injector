@@ -87,7 +87,7 @@ pub async fn send_chia_message(sink: &mut WsSink, msg: &Message) -> anyhow::Resu
 }
 
 pub async fn send_raw_bytes(sink: &mut WsSink, bytes: &[u8]) -> anyhow::Result<()> {
-    sink.send(tungstenite::Message::Binary(bytes.to_vec().into()))
+    sink.send(tungstenite::Message::Binary(bytes.to_vec()))
         .await
         .context("ws send")?;
     Ok(())

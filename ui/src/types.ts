@@ -29,6 +29,7 @@ export type InjectorSnapshot = {
   send_mode: SendMode;
 
   cursor_event_id: number;
+  sent_events_total: number;
   first_event_id: number;
   last_event_id: number;
   peer_statuses: PeerStatus[];

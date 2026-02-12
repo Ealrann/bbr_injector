@@ -71,7 +71,9 @@ impl ToyDebugClient {
             .context("GET /debug/v1/compaction/summary")?
             .error_for_status()
             .context("summary status")?;
-        resp.json::<CompactionSummary>().await.context("parse summary")
+        resp.json::<CompactionSummary>()
+            .await
+            .context("parse summary")
     }
 
     pub async fn p2p_metrics(&self) -> anyhow::Result<P2pMetrics> {
@@ -84,9 +86,7 @@ impl ToyDebugClient {
             .context("GET /debug/v1/compact_vdf/p2p_metrics")?
             .error_for_status()
             .context("p2p_metrics status")?;
-        resp.json::<P2pMetrics>()
-            .await
-            .context("parse p2p_metrics")
+        resp.json::<P2pMetrics>().await.context("parse p2p_metrics")
     }
 
     pub async fn check_needs_compact_proof(

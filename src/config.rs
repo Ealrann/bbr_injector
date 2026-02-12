@@ -158,15 +158,15 @@ fn expand_tilde(p: &Path) -> PathBuf {
     let Some(s) = p.to_str() else {
         return p.to_path_buf();
     };
-    if s == "~" || s.starts_with("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
-            if s == "~" {
-                return home;
-            }
-            if let Some(rest) = s.strip_prefix("~/") {
-                return home.join(rest);
-            }
+    if (s == "~" || s.starts_with("~/"))
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        let home = PathBuf::from(home);
+        if s == "~" {
+            return home;
+        }
+        if let Some(rest) = s.strip_prefix("~/") {
+            return home.join(rest);
         }
     }
     p.to_path_buf()
