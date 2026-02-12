@@ -18,6 +18,9 @@ use crate::peer::{OutboundMessage, PeerEvent, PeerSession};
 use crate::proofs::{ProofProvider, ProofServingMetrics};
 use crate::shutdown::Shutdown;
 
+const POLL_INTERVAL_MS: u64 = 500;
+const EVENTS_READ_LIMIT: u32 = 5_000;
+
 #[derive(Debug, Clone)]
 pub enum ControlCommand {
     SetPaused {
@@ -84,7 +87,6 @@ pub struct InjectorHandle {
 }
 
 pub struct Injector {
-    config: Config,
     archive: Arc<ArchiveDb>,
     in_flight: InFlightStore,
 
@@ -195,7 +197,6 @@ impl Injector {
 
         Ok((
             Self {
-                config,
                 archive,
                 in_flight,
                 paused: in_flight_snapshot.paused,
@@ -228,9 +229,7 @@ impl Injector {
     }
 
     pub async fn run(mut self, shutdown: Shutdown) -> anyhow::Result<()> {
-        let poll_interval = Duration::from_millis(self.config.injector.poll_interval_ms.max(100));
-
-        let mut poll_tick = tokio::time::interval(poll_interval);
+        let mut poll_tick = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
         // Scheduler tick doesn't define throughput; it just drives progress when we're not
         // receiving peer events.
         let mut sched_tick = tokio::time::interval(Duration::from_millis(100));
@@ -392,7 +391,7 @@ impl Injector {
             return;
         }
 
-        let limit = self.config.injector.events_read_limit.max(1);
+        let limit = EVENTS_READ_LIMIT;
         let resp = match self.archive.read_events(self.cursor_event_id, limit).await {
             Ok(r) => r,
             Err(e) => {

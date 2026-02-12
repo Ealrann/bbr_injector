@@ -17,16 +17,6 @@ key_path  = "~/.chia/mainnet/config/ssl/full_node/public_full_node.key"
 db_path = "../bbr_scrap/data/compact_proofs.sqlite"
 busy_timeout_ms = 500
 
-[injector]
-# Default speed used on first launch before `data/in_flight.json` exists.
-default_proofs_per_window = 3
-default_window_ms = 2000
-
-# How often to poll the local archive event log when our local buffer is low.
-poll_interval_ms = 500
-# Batch size for reading from the local archive DB.
-events_read_limit = 5000
-
 [peers]
 # Fixed list of FULL_NODE peers to inject into.
 targets = [

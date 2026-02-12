@@ -9,7 +9,6 @@ pub struct Config {
     #[serde(default)]
     pub tls: TlsConfig,
     pub archive: ArchiveConfig,
-    pub injector: InjectorConfig,
     pub peers: PeersConfig,
     pub storage: StorageConfig,
     #[serde(default)]
@@ -44,21 +43,6 @@ pub struct ArchiveConfig {
     /// SQLite busy timeout (ms) for read operations.
     #[serde(default = "default_archive_busy_timeout_ms")]
     pub busy_timeout_ms: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct InjectorConfig {
-    /// Default send budget on first launch (used to initialize in-flight state).
-    pub default_proofs_per_window: u32,
-
-    /// Default window size (ms) on first launch (used to initialize in-flight state).
-    pub default_window_ms: u64,
-
-    /// How often to poll the local archive DB event log.
-    pub poll_interval_ms: u64,
-
-    /// Batch size for reading from the local archive DB.
-    pub events_read_limit: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -118,18 +102,6 @@ impl Config {
         }
         if self.archive.db_path.as_os_str().is_empty() {
             return Err(anyhow!("archive.db_path must not be empty"));
-        }
-        if self.injector.default_proofs_per_window == 0 {
-            return Err(anyhow!("injector.default_proofs_per_window must be > 0"));
-        }
-        if self.injector.default_window_ms == 0 {
-            return Err(anyhow!("injector.default_window_ms must be > 0"));
-        }
-        if self.injector.poll_interval_ms == 0 {
-            return Err(anyhow!("injector.poll_interval_ms must be > 0"));
-        }
-        if self.injector.events_read_limit == 0 {
-            return Err(anyhow!("injector.events_read_limit must be > 0"));
         }
         if self.peers.targets.is_empty() {
             return Err(anyhow!("peers.targets must not be empty"));

@@ -30,6 +30,9 @@ use crate::shutdown::Shutdown;
 #[cfg(feature = "test-mode")]
 use crate::test_mode::{TestArgs, run_test};
 
+const DEFAULT_PROOFS_PER_WINDOW: u32 = 3;
+const DEFAULT_WINDOW_MS: u64 = 2_000;
+
 #[derive(Debug, Parser)]
 #[command(name = "bbr-injector")]
 #[command(about = "Inject compact-proof announcements into specific peers at a fixed rate", long_about = None)]
@@ -84,8 +87,8 @@ async fn main() -> anyhow::Result<()> {
     let in_flight_defaults = InFlightState {
         cursor_event_id: 0,
         end_event_id: None,
-        proofs_per_window: config.injector.default_proofs_per_window.max(1),
-        window_ms: config.injector.default_window_ms.max(1),
+        proofs_per_window: DEFAULT_PROOFS_PER_WINDOW,
+        window_ms: DEFAULT_WINDOW_MS,
         paused: true,
         send_mode: SendMode::Announcement,
     };
